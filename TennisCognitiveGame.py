@@ -77,6 +77,14 @@ class TennisCognitiveApp:
             bg="#ffe8c7"
         ).pack(pady=3)
 
+        tk.Label(
+            sidebar,
+            text="developed by @SunilBM",
+            fg="#d7f0d7",
+            bg="#193d28",
+            font=("Helvetica", 10)
+        ).pack(side="bottom", anchor="w", padx=8, pady=10)
+
         self.canvas = tk.Canvas(container, width=830, height=600, bg="darkgreen", highlightthickness=0)
         self.canvas.pack(side="left")
 
@@ -137,10 +145,91 @@ class TennisCognitiveApp:
             self.best_scores[task][self.level] = score
 
     def ask_player_name(self, game_name):
-        name = simpledialog.askstring("Player Name", f"Enter Player Name for {game_name}:")
-        if not name or not name.strip():
+        result = {"name": None}
+
+        dialog = tk.Toplevel(self.master)
+        dialog.title(f"{game_name} Setup")
+        dialog.resizable(False, False)
+        dialog.transient(self.master)
+        dialog.grab_set()
+        dialog.configure(bg="#eef5ee")
+
+        tk.Label(
+            dialog,
+            text=f"{game_name} - Player Setup",
+            bg="#eef5ee",
+            fg="#163b27",
+            font=("Helvetica", 14, "bold")
+        ).grid(row=0, column=0, columnspan=2, padx=16, pady=(12, 10), sticky="w")
+
+        tk.Label(
+            dialog,
+            text="Player Name:",
+            bg="#eef5ee",
+            fg="#163b27",
+            font=("Helvetica", 11, "bold")
+        ).grid(row=1, column=0, padx=(16, 8), pady=(0, 8), sticky="e")
+
+        name_var = tk.StringVar()
+        name_entry = tk.Entry(dialog, textvariable=name_var, width=28, font=("Helvetica", 11))
+        name_entry.grid(row=1, column=1, padx=(0, 16), pady=(0, 8), sticky="w")
+
+        tk.Label(
+            dialog,
+            text="Levels",
+            bg="#eef5ee",
+            fg="#163b27",
+            font=("Helvetica", 11, "bold")
+        ).grid(row=2, column=0, columnspan=2, padx=16, pady=(2, 4), sticky="w")
+
+        level_lines = [
+            "Level 1: 🔓 Unlocked",
+            "Level 2: 🔒 Locked (Unlock at 100 score)",
+            "Level 3: 🔒 Locked (Unlock at 200 score)"
+        ]
+        for idx, line in enumerate(level_lines, start=3):
+            tk.Label(
+                dialog,
+                text=line,
+                bg="#eef5ee",
+                fg="#204d36",
+                font=("Helvetica", 10)
+            ).grid(row=idx, column=0, columnspan=2, padx=16, pady=1, sticky="w")
+
+        btn_row = 3 + len(level_lines)
+        btn_frame = tk.Frame(dialog, bg="#eef5ee")
+        btn_frame.grid(row=btn_row, column=0, columnspan=2, padx=16, pady=(12, 14), sticky="e")
+
+        def submit():
+            name = name_var.get().strip()
+            if not name:
+                messagebox.showwarning("Player Name", "Please enter player name.", parent=dialog)
+                name_entry.focus_set()
+                return
+            result["name"] = name
+            dialog.destroy()
+
+        def cancel():
+            dialog.destroy()
+
+        tk.Button(btn_frame, text="Start", width=10, command=submit, bg="#d6efd6").pack(side="left", padx=(0, 8))
+        tk.Button(btn_frame, text="Cancel", width=10, command=cancel, bg="#f2d6d6").pack(side="left")
+
+        dialog.bind("<Return>", lambda _e: submit())
+        dialog.bind("<Escape>", lambda _e: cancel())
+
+        dialog.update_idletasks()
+        x = self.master.winfo_rootx() + (self.master.winfo_width() - dialog.winfo_width()) // 2
+        y = self.master.winfo_rooty() + (self.master.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f"+{max(10, x)}+{max(10, y)}")
+
+        name_entry.focus_set()
+        self.master.wait_window(dialog)
+
+        if not result["name"]:
             return False
-        self.current_player = name.strip()
+
+        self.current_player = result["name"]
         self.current_game = game_name
         return True
 
@@ -176,7 +265,12 @@ class TennisCognitiveApp:
         if self.player_id:
             self.canvas.itemconfigure(self.player_id, text=f"Player: {self.current_player}")
         if self.level_id:
-            self.canvas.itemconfigure(self.level_id, text=f"Level: {self.level}/3")
+            l2_status = "🔓" if self.score >= 100 else "🔒(100)"
+            l3_status = "🔓" if self.score >= 200 else "🔒(200)"
+            self.canvas.itemconfigure(
+                self.level_id,
+                text=f"Level: {self.level}/3   L2: {l2_status}   L3: {l3_status}"
+            )
         if self.score_id:
             self.canvas.itemconfigure(self.score_id, text=f"Score: {self.score}")
 
@@ -199,27 +293,21 @@ class TennisCognitiveApp:
     def add_point(self, points=1):
         self.score += points
         self.total_score += points
+        previous_level = self.level
+
+        if self.score >= 200:
+            self.level = 3
+        elif self.score >= 100:
+            self.level = 2
+        else:
+            self.level = 1
+
         self.refresh_hud()
 
-        if self.score < 80:
-            return "continue"
-
-        if self.level < 3:
-            next_level = messagebox.askyesno(
-                "Next Level",
-                f"{self.current_player}, you reached 80 points in Level {self.level}.\nMove to Level {self.level + 1}?"
-            )
-            if next_level:
-                self.level += 1
-                self.score = 0
-                self.refresh_hud()
-                return "next_level"
-            self.end_game_session("Game stopped before next level.")
-            return "ended"
-
-        messagebox.showinfo("Completed", f"{self.current_player}, you completed all 3 levels in {self.current_game}.")
-        self.end_game_session("Game completed.")
-        return "ended"
+        if self.level > previous_level:
+            messagebox.showinfo("Level Unlocked", f"🔓 Level {self.level} unlocked in {self.current_game}.")
+            return "next_level"
+        return "continue"
 
     def end_game_session(self, message=None):
         if not self.game_running:
