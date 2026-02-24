@@ -16,6 +16,8 @@ class TennisCognitiveApp:
         self.current_player = None
         self.current_game = None
         self.game_running = False
+        self.level_2_unlock_score = 50
+        self.level_3_unlock_score = 100
 
         self.base_speed = {
             "Attention": 1200,
@@ -183,9 +185,9 @@ class TennisCognitiveApp:
         ).grid(row=2, column=0, columnspan=2, padx=16, pady=(2, 4), sticky="w")
 
         level_lines = [
-            "Level 1: 🔓 Unlocked",
-            "Level 2: 🔒 Locked (Unlock at 100 score)",
-            "Level 3: 🔒 Locked (Unlock at 200 score)"
+            "Level 1: Unlocked",
+            f"Level 2: Locked (Unlock at {self.level_2_unlock_score} score)",
+            f"Level 3: Locked (Unlock at {self.level_3_unlock_score} score)"
         ]
         for idx, line in enumerate(level_lines, start=3):
             tk.Label(
@@ -265,8 +267,8 @@ class TennisCognitiveApp:
         if self.player_id:
             self.canvas.itemconfigure(self.player_id, text=f"Player: {self.current_player}")
         if self.level_id:
-            l2_status = "🔓" if self.score >= 100 else "🔒(100)"
-            l3_status = "🔓" if self.score >= 200 else "🔒(200)"
+            l2_status = "Unlocked" if self.score >= self.level_2_unlock_score else f"Locked({self.level_2_unlock_score})"
+            l3_status = "Unlocked" if self.score >= self.level_3_unlock_score else f"Locked({self.level_3_unlock_score})"
             self.canvas.itemconfigure(
                 self.level_id,
                 text=f"Level: {self.level}/3   L2: {l2_status}   L3: {l3_status}"
@@ -295,9 +297,9 @@ class TennisCognitiveApp:
         self.total_score += points
         previous_level = self.level
 
-        if self.score >= 200:
+        if self.score >= self.level_3_unlock_score:
             self.level = 3
-        elif self.score >= 100:
+        elif self.score >= self.level_2_unlock_score:
             self.level = 2
         else:
             self.level = 1
@@ -421,61 +423,56 @@ class TennisCognitiveApp:
         if not self.begin_game(
             "Coordination",
             "Eye-Hand Coordination Task",
-            "Move mouse to control paddle and catch only the instructed color."
+            "Move mouse to keep one bouncing ball alive. Missing the ball ends the game."
         ):
             return
 
         play_left, play_top, play_right, play_bottom = 120, 120, 790, 560
         self.canvas.create_rectangle(play_left, play_top, play_right, play_bottom, outline="white", width=2, tags="play")
-        palette = [
-            ("BLUE", "deepskyblue"),
-            ("RED", "tomato"),
-            ("GREEN", "limegreen"),
-            ("YELLOW", "gold"),
-            ("ORANGE", "orange"),
-            ("PINK", "hotpink")
-        ]
+        ball_fill = "deepskyblue"
 
         state = {
             "paddle_x": 455.0,
             "mouse_x": 455.0,
             "paddle_w": 170.0,
             "paddle_h": 16.0,
-            "misses": 0,
-            "target_name": "BLUE",
-            "target_fill": "deepskyblue",
             "balls": []
         }
 
         paddle_y = play_bottom - 20
         paddle_id = self.canvas.create_rectangle(0, 0, 0, 0, fill="#f4e74f", outline="black", width=1, tags="play")
         status_id = self.canvas.create_text(415, 95, text="", fill="yellow", font=("Helvetica", 12))
-        target_id = self.canvas.create_text(770, 52, text="", fill="white", anchor="e", font=("Helvetica", 12, "bold"))
-        miss_id = self.canvas.create_text(770, 76, text="Misses: 0/3", fill="white", anchor="e", font=("Helvetica", 11))
+        speed_step_score = 5
+        speed_step_factor = 1.06
+        max_h_speed = 7.5
+        max_v_speed = 10.5
 
         def clamp(val, lo, hi):
             return max(lo, min(hi, val))
 
-        def choose_target():
-            state["target_name"], state["target_fill"] = random.choice(palette)
-            self.canvas.itemconfigure(target_id, text=f"Collect: {state['target_name']}")
+        def speed_stage():
+            return self.score // speed_step_score
 
         def desired_ball_count():
-            return min(8, 4 + (self.level - 1) + (1 if self.score > 25 else 0))
+            return 1
 
         def spawn_ball(ball=None):
             if ball is None:
                 ball = {}
 
-            color_name, color_fill = random.choice(palette)
-            ball["name"] = color_name
-            ball["fill"] = color_fill
+            ball["fill"] = ball_fill
             ball["r"] = random.randint(12, 18)
             ball["x"] = random.randint(play_left + 24, play_right - 24)
             ball["y"] = random.randint(play_top + 25, play_top + 110)
-            dx_mag = random.uniform(1.6, 3.2) + (self.level - 1) * 0.25 + min(1.6, max(0, self.score - 25) * 0.03)
-            ball["dx"] = random.choice([-1, 1]) * dx_mag
-            ball["dy"] = random.uniform(2.4, 3.8) + (self.level - 1) * 0.45 + min(3.4, max(0, self.score - 25) * 0.06)
+            stage_factor = speed_step_factor ** speed_stage()
+            dx_mag = random.uniform(1.8, 2.7) + (self.level - 1) * 0.20 + min(1.0, max(0, self.score - 25) * 0.02)
+            ball["dx"] = clamp(random.choice([-1, 1]) * dx_mag * stage_factor, -max_h_speed, max_h_speed)
+            ball["dy"] = clamp(
+                (random.uniform(2.3, 3.1) + (self.level - 1) * 0.35 + min(2.0, max(0, self.score - 25) * 0.04)) * stage_factor,
+                -max_v_speed,
+                max_v_speed
+            )
+            ball["speed_stage"] = speed_stage()
 
             if "id" not in ball:
                 ball["id"] = self.canvas.create_oval(0, 0, 0, 0, fill=ball["fill"], outline="white", width=2, tags="play")
@@ -487,6 +484,18 @@ class TennisCognitiveApp:
             )
             return ball
 
+        def apply_speed_step(ball):
+            current_stage = speed_stage()
+            previous_stage = ball.get("speed_stage", current_stage)
+            if current_stage <= previous_stage:
+                return
+
+            factor = speed_step_factor ** (current_stage - previous_stage)
+            ball["dx"] = clamp(ball["dx"] * factor, -max_h_speed, max_h_speed)
+            ball["dy"] = clamp(ball["dy"] * factor, -max_v_speed, max_v_speed)
+            ball["speed_stage"] = current_stage
+            self.canvas.itemconfigure(status_id, text=f"Speed increased at {current_stage * speed_step_score} score")
+
         def rebuild_balls():
             need = desired_ball_count()
             while len(state["balls"]) < need:
@@ -496,18 +505,6 @@ class TennisCognitiveApp:
                 self.canvas.delete(extra["id"])
             for ball in state["balls"]:
                 spawn_ball(ball)
-
-        def register_miss(reason_text):
-            state["misses"] += 1
-            self.canvas.itemconfigure(status_id, text=reason_text)
-            self.canvas.itemconfigure(miss_id, text=f"Misses: {state['misses']}/3")
-            if state["misses"] >= 3:
-                self.score = max(0, self.score - 1)
-                self.total_score = max(0, self.total_score - 1)
-                self.refresh_hud()
-                self.end_game_session("Missed 3 times. -1 score. Game over.")
-                return True
-            return False
 
         def update_paddle():
             target_width = max(84, 170 - ((self.level - 1) * 26) - (max(0, self.score - 25) // 2))
@@ -525,10 +522,8 @@ class TennisCognitiveApp:
             )
 
         def update_ball(ball):
-            tick = max(8, self.game_speed("Coordination"))
-            frame_scale = 28.0 / tick
-            ball["x"] += ball["dx"] * frame_scale
-            ball["y"] += ball["dy"] * frame_scale
+            ball["x"] += ball["dx"]
+            ball["y"] += ball["dy"]
 
             if ball["x"] - ball["r"] <= play_left:
                 ball["x"] = play_left + ball["r"]
@@ -562,28 +557,20 @@ class TennisCognitiveApp:
                 ball_hit_paddle = ball_bottom >= y1 and ball_top <= y2 and ball["dy"] > 0 and ball_on_paddle_x
 
                 if ball_hit_paddle:
-                    if ball["name"] == state["target_name"]:
-                        self.canvas.itemconfigure(status_id, text=f"Correct catch: {ball['name']}")
-                        progression = self.add_point(1)
-                        if progression == "ended":
-                            return
-                        if progression == "next_level":
-                            choose_target()
-                            rebuild_balls()
-                        elif self.score > 0 and self.score % 12 == 0:
-                            choose_target()
-                        spawn_ball(ball)
-                    else:
-                        if register_miss(f"Wrong catch: {ball['name']}"):
-                            return
-                        spawn_ball(ball)
+                    self.canvas.itemconfigure(status_id, text="Bounce +1")
+                    progression = self.add_point(1)
+                    if progression == "ended":
+                        return
+                    ball["y"] = y1 - ball["r"] - 1
+                    ball["dy"] = -abs(ball["dy"])
+                    paddle_offset = (ball["x"] - state["paddle_x"]) / max(1.0, state["paddle_w"] / 2.0)
+                    ball["dx"] = clamp(ball["dx"] + paddle_offset * 0.9, -max_h_speed, max_h_speed)
+                    apply_speed_step(ball)
                 elif ball["y"] - ball["r"] > play_bottom:
-                    if ball["name"] == state["target_name"]:
-                        if register_miss("Missed instructed ball"):
-                            return
-                    spawn_ball(ball)
+                    self.end_game_session("You missed the ball. Game over.")
+                    return
 
-            self._schedule(max(8, self.game_speed("Coordination")), animate)
+            self._schedule(16, animate)
 
         def on_mouse_move(event):
             if not self.game_running or self.current_game != "Coordination":
@@ -591,7 +578,6 @@ class TennisCognitiveApp:
             state["mouse_x"] = clamp(event.x, play_left + 42, play_right - 42)
 
         self._bind(self.canvas, "<Motion>", on_mouse_move)
-        choose_target()
         rebuild_balls()
         animate()
 
@@ -795,3 +781,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = TennisCognitiveApp(root)
     root.mainloop()
+
