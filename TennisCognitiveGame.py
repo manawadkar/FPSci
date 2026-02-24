@@ -592,8 +592,6 @@ class TennisCognitiveApp:
         self.prompt_id = self.canvas.create_text(415, 310, text="", fill="white", font=("Helvetica", 34, "bold"))
         self.status_id = self.canvas.create_text(415, 370, text="", fill="yellow", font=("Helvetica", 14))
         self.round_job = None
-        wrong_attempts = {"value": 0}
-        wrong_id = self.canvas.create_text(770, 76, text="Wrong Attempts: 0/3", fill="white", anchor="e", font=("Helvetica", 11))
 
         def new_round():
             if not self.game_running or self.current_game != "Decision":
@@ -608,23 +606,6 @@ class TennisCognitiveApp:
                     pass
             self.round_job = self._schedule(self.game_speed("Decision"), new_round)
 
-        def finish_decision_game():
-            if not self.game_running or self.current_game != "Decision":
-                return
-            self.game_running = False
-            self.update_score("Decision", self.total_score, better="higher")
-            self.save_game_record(self.total_score)
-            self.clear_canvas()
-
-            play_again = messagebox.askyesno(
-                "Decision Game Over",
-                "3 wrong attempts reached. Do you want to play again?"
-            )
-            if play_again:
-                self.start_decision()
-            else:
-                self.start_menu()
-
         def on_key(event):
             if not self.game_running or self.current_game != "Decision":
                 return
@@ -634,15 +615,8 @@ class TennisCognitiveApp:
                 if state != "ended":
                     new_round()
             else:
-                wrong_attempts["value"] += 1
-                self.canvas.itemconfigure(wrong_id, text=f"Wrong Attempts: {wrong_attempts['value']}/3")
-                if wrong_attempts["value"] >= 3:
-                    self.canvas.itemconfigure(self.status_id, text="Wrong key (3/3)")
-                    finish_decision_game()
-                else:
-                    left = 3 - wrong_attempts["value"]
-                    self.canvas.itemconfigure(self.status_id, text=f"Wrong key ({left} chances left)")
-                    new_round()
+                self.canvas.itemconfigure(self.status_id, text="Wrong key")
+                new_round()
 
         self._bind(self.master, "<KeyPress>", on_key)
         new_round()
@@ -724,19 +698,6 @@ class TennisCognitiveApp:
         self.sequence_id = self.canvas.create_text(415, 300, text="", fill="yellow", font=("Helvetica", 34, "bold"))
         self.status_id = self.canvas.create_text(415, 390, text="", fill="white", font=("Helvetica", 15))
         self.current_sequence = []
-        wrong_attempts = {"value": 0}
-        attempts_id = self.canvas.create_text(770, 76, text="Wrong Attempts: 0/3", fill="white", anchor="e", font=("Helvetica", 11))
-
-        def lose_attempt(message):
-            wrong_attempts["value"] += 1
-            self.canvas.itemconfigure(attempts_id, text=f"Wrong Attempts: {wrong_attempts['value']}/3")
-            if wrong_attempts["value"] >= 3:
-                self.end_game_session("3 wrong attempts. Memory game over.")
-                return "ended"
-            left = 3 - wrong_attempts["value"]
-            self.canvas.itemconfigure(self.status_id, text=f"{message}  ({left} wrong attempts left)")
-            self._schedule(600, next_round)
-            return "continue"
 
         def next_round():
             if not self.game_running or self.current_game != "Memory":
@@ -772,7 +733,8 @@ class TennisCognitiveApp:
                 if state != "ended":
                     next_round()
             else:
-                lose_attempt("Wrong pattern")
+                self.canvas.itemconfigure(self.status_id, text="Wrong pattern")
+                self._schedule(600, next_round)
 
         next_round()
 
